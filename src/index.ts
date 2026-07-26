@@ -1,24 +1,24 @@
-import { fakePlanner } from "./agents/fakePlanner";
+import "dotenv/config";
+import { realPlanner } from "./agents/realPlanner";
 import { fakeResearcher } from "./agents/fakeResearcher";
 import { SimpleOrchestrator } from "./orchestrator";
+import { Finding, Plan } from "./types";
 
-async function main() {
-  const query = "compare event sourcing vs. CRUD for a fintech app";
+const TEST_QUERIES = [
+  "compare event sourcing vs. CRUD for a fintech app",
+  "what's the healthiest way to train for a marathon as a beginner",
+  "how did the fall of the Roman Empire affect medieval trade routes",
+];
 
-  const orchestrator = new SimpleOrchestrator(fakePlanner, {
-    web: fakeResearcher,
-    docs: fakeResearcher,
-    code: fakeResearcher,
-  });
-
-  const plan = await orchestrator.planner.run(query);
+function printPlan(plan: Plan): void {
   console.log("=== PLAN ===");
   console.log(`Original query: ${plan.originalQuery}`);
   for (const subQuestion of plan.subQuestions) {
     console.log(`  [${subQuestion.id}] (${subQuestion.sourceType}) ${subQuestion.text}`);
   }
+}
 
-  const findings = await orchestrator.run(query);
+function printFindings(findings: Finding[]): void {
   console.log("\n=== FINDINGS ===");
   for (const finding of findings) {
     console.log(`  [${finding.subQuestionId}] confidence=${finding.confidence} verified=${finding.verified}`);
@@ -29,4 +29,29 @@ async function main() {
   }
 }
 
-main();
+async function main() {
+  const orchestrator = new SimpleOrchestrator(realPlanner, {
+    web: fakeResearcher,
+    docs: fakeResearcher,
+    code: fakeResearcher,
+  });
+
+  for (const query of TEST_QUERIES) {
+    console.log(`\n\n########## QUERY: ${query} ##########`);
+
+    const plan = await orchestrator.planner.run(query);
+    printPlan(plan);
+
+    const findings: Finding[] = [];
+    for (const subQuestion of plan.subQuestions) {
+      const researcher = orchestrator.researchers[subQuestion.sourceType];
+      findings.push(await researcher.run(subQuestion));
+    }
+    printFindings(findings);
+  }
+}
+
+main().catch((error) => {
+  console.error("Fatal error:", error);
+  process.exit(1);
+});

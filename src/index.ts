@@ -1,13 +1,13 @@
 import "dotenv/config";
 import { realPlanner } from "./agents/realPlanner";
 import { fakeResearcher } from "./agents/fakeResearcher";
+import { webResearcher } from "./agents/webResearcher";
 import { SimpleOrchestrator } from "./orchestrator";
 import { Finding, Plan } from "./types";
 
 const TEST_QUERIES = [
   "compare event sourcing vs. CRUD for a fintech app",
   "what's the healthiest way to train for a marathon as a beginner",
-  "how did the fall of the Roman Empire affect medieval trade routes",
 ];
 
 function printPlan(plan: Plan): void {
@@ -18,20 +18,17 @@ function printPlan(plan: Plan): void {
   }
 }
 
-function printFindings(findings: Finding[]): void {
-  console.log("\n=== FINDINGS ===");
-  for (const finding of findings) {
-    console.log(`  [${finding.subQuestionId}] confidence=${finding.confidence} verified=${finding.verified}`);
-    console.log(`    content: ${finding.content}`);
-    for (const source of finding.sources) {
-      console.log(`    source: ${source.title} (${source.url ?? "no url"}) — ${source.snippet}`);
-    }
+function printFinding(finding: Finding): void {
+  console.log(`  [${finding.subQuestionId}] confidence=${finding.confidence} verified=${finding.verified}`);
+  console.log(`    content: ${finding.content}`);
+  for (const source of finding.sources) {
+    console.log(`    source: ${source.title} (${source.url ?? "no url"}) — ${source.snippet}`);
   }
 }
 
 async function main() {
   const orchestrator = new SimpleOrchestrator(realPlanner, {
-    web: fakeResearcher,
+    web: webResearcher,
     docs: fakeResearcher,
     code: fakeResearcher,
   });
@@ -42,12 +39,13 @@ async function main() {
     const plan = await orchestrator.planner.run(query);
     printPlan(plan);
 
-    const findings: Finding[] = [];
+    console.log("\n=== FINDINGS ===");
     for (const subQuestion of plan.subQuestions) {
+      console.log(`\n--- researching [${subQuestion.id}] (${subQuestion.sourceType}) ---`);
       const researcher = orchestrator.researchers[subQuestion.sourceType];
-      findings.push(await researcher.run(subQuestion));
+      const finding = await researcher.run(subQuestion);
+      printFinding(finding);
     }
-    printFindings(findings);
   }
 }
 

@@ -6,8 +6,9 @@ import { SimpleOrchestrator } from "./orchestrator";
 import { Finding, Plan } from "./types";
 
 const TEST_QUERIES = [
-  "compare event sourcing vs. CRUD for a fintech app",
-  "what's the healthiest way to train for a marathon as a beginner",
+  // "compare event sourcing vs. CRUD for a fintech app",
+  // "what's the healthiest way to train for a marathon as a beginner",
+  "What design patterns are used most in strongly typed languages?",
 ];
 
 function printPlan(plan: Plan): void {

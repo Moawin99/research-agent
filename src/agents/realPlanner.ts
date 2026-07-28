@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { Plan, PlannerAgent } from "../types";
 import { PlanSchema } from "../schemas";
+import { stripCodeFences } from "../utils";
 
 const client = new Anthropic();
 
@@ -10,12 +11,6 @@ For each sub-question, assign a sourceType of "web", "docs", or "code" depending
 
 Return ONLY raw JSON matching this exact shape, with no markdown code fences and no preamble or explanation:
 {"originalQuery": string, "subQuestions": [{"id": string, "text": string, "sourceType": "web"|"docs"|"code"}]}`;
-
-function stripCodeFences(text: string): string {
-  const trimmed = text.trim();
-  const fenceMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
-  return fenceMatch ? fenceMatch[1].trim() : trimmed;
-}
 
 export const realPlanner: PlannerAgent = {
   name: "realPlanner",

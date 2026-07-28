@@ -3,6 +3,7 @@ export interface SubQuestion {
   text: string;
   sourceType: "web" | "docs" | "code";
   parentId?: string;
+  feedback?: string;
 }
 
 export interface Plan {
@@ -32,8 +33,17 @@ export interface Agent<TInput, TOutput> {
 export type PlannerAgent = Agent<string, Plan>;
 export type ResearcherAgent = Agent<SubQuestion, Finding>;
 
+export interface CriticVerdict {
+  subQuestionId: string;
+  passed: boolean;
+  feedback?: string; // present when passed = false, tells the researcher what to improve
+}
+
+export type CriticAgent = Agent<{ subQuestion: SubQuestion; finding: Finding }, CriticVerdict>;
+
 export interface Orchestrator {
   planner: PlannerAgent;
   researchers: Record<SubQuestion["sourceType"], ResearcherAgent>;
+  critic: CriticAgent;
   run(query: string): Promise<Finding[]>;
 }

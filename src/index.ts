@@ -2,22 +2,11 @@ import "dotenv/config";
 import { realPlanner } from "./agents/realPlanner";
 import { fakeResearcher } from "./agents/fakeResearcher";
 import { webResearcher } from "./agents/webResearcher";
+import { criticAgent } from "./agents/criticAgent";
 import { SimpleOrchestrator } from "./orchestrator";
-import { Finding, Plan } from "./types";
+import { Finding } from "./types";
 
-const TEST_QUERIES = [
-  // "compare event sourcing vs. CRUD for a fintech app",
-  // "what's the healthiest way to train for a marathon as a beginner",
-  "What design patterns are used most in strongly typed languages?",
-];
-
-function printPlan(plan: Plan): void {
-  console.log("=== PLAN ===");
-  console.log(`Original query: ${plan.originalQuery}`);
-  for (const subQuestion of plan.subQuestions) {
-    console.log(`  [${subQuestion.id}] (${subQuestion.sourceType}) ${subQuestion.text}`);
-  }
-}
+const TEST_QUERIES = ["What design patterns are used most in strongly typed languages?"];
 
 function printFinding(finding: Finding): void {
   console.log(`  [${finding.subQuestionId}] confidence=${finding.confidence} verified=${finding.verified}`);
@@ -28,23 +17,24 @@ function printFinding(finding: Finding): void {
 }
 
 async function main() {
-  const orchestrator = new SimpleOrchestrator(realPlanner, {
-    web: webResearcher,
-    docs: fakeResearcher,
-    code: fakeResearcher,
-  });
+  const orchestrator = new SimpleOrchestrator(
+    realPlanner,
+    {
+      web: webResearcher,
+      docs: fakeResearcher,
+      code: fakeResearcher,
+    },
+    criticAgent
+  );
 
   for (const query of TEST_QUERIES) {
     console.log(`\n\n########## QUERY: ${query} ##########`);
 
-    const plan = await orchestrator.planner.run(query);
-    printPlan(plan);
+    const findings = await orchestrator.run(query);
 
     console.log("\n=== FINDINGS ===");
-    for (const subQuestion of plan.subQuestions) {
-      console.log(`\n--- researching [${subQuestion.id}] (${subQuestion.sourceType}) ---`);
-      const researcher = orchestrator.researchers[subQuestion.sourceType];
-      const finding = await researcher.run(subQuestion);
+    for (const finding of findings) {
+      console.log();
       printFinding(finding);
     }
   }

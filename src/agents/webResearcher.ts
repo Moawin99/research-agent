@@ -38,6 +38,17 @@ async function createWithRetry(
   throw new Error(`webResearcher: API call failed after ${MAX_ATTEMPTS} attempts: ${lastError}`);
 }
 
+function buildUserMessage(subQuestion: SubQuestion): string {
+  if (!subQuestion.feedback) return subQuestion.text;
+
+  return `${subQuestion.text}
+
+A previous attempt to answer this question was reviewed and rejected. Reviewer feedback:
+"${subQuestion.feedback}"
+
+Research again and specifically address this feedback in your revised answer.`;
+}
+
 export const webResearcher: ResearcherAgent = {
   name: "webResearcher",
   async run(subQuestion: SubQuestion): Promise<Finding> {
@@ -46,7 +57,7 @@ export const webResearcher: ResearcherAgent = {
       max_tokens: 4096,
       system: SYSTEM_PROMPT,
       tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 5 }],
-      messages: [{ role: "user", content: subQuestion.text }],
+      messages: [{ role: "user", content: buildUserMessage(subQuestion) }],
     });
 
     if (response.stop_reason === "pause_turn") {

@@ -25,3 +25,9 @@ export const FindingSchema = z.object({
   confidence: z.enum(["low", "medium", "high"]),
   verified: z.boolean(),
 });
+
+export const CriticVerdictSchema = z.object({
+  subQuestionId: z.string(),
+  passed: z.boolean(),
+  feedback: z.string().optional(),
+});

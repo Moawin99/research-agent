@@ -31,3 +31,17 @@ export const CriticVerdictSchema = z.object({
   passed: z.boolean(),
   feedback: z.string().optional(),
 });
+
+export const AnswerSectionSchema = z.object({
+  subQuestionId: z.string(),
+  heading: z.string(),
+  content: z.string(),
+  citedSources: z.array(SourceSchema),
+});
+
+export const SynthesizedAnswerSchema = z.object({
+  originalQuery: z.string(),
+  sections: z.array(AnswerSectionSchema),
+  summary: z.string(),
+  unresolvedQuestions: z.array(z.string()),
+});

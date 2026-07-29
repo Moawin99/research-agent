@@ -3,16 +3,36 @@ import { realPlanner } from "./agents/realPlanner";
 import { fakeResearcher } from "./agents/fakeResearcher";
 import { webResearcher } from "./agents/webResearcher";
 import { criticAgent } from "./agents/criticAgent";
+import { synthesizerAgent } from "./agents/synthesizerAgent";
 import { SimpleOrchestrator } from "./orchestrator";
-import { Finding } from "./types";
+import { SynthesizedAnswer } from "./types";
 
 const TEST_QUERIES = ["What design patterns are used most in strongly typed languages?"];
 
-function printFinding(finding: Finding): void {
-  console.log(`  [${finding.subQuestionId}] confidence=${finding.confidence} verified=${finding.verified}`);
-  console.log(`    content: ${finding.content}`);
-  for (const source of finding.sources) {
-    console.log(`    source: ${source.title} (${source.url ?? "no url"}) — ${source.snippet}`);
+function printAnswer(answer: SynthesizedAnswer): void {
+  console.log("=== SUMMARY ===");
+  console.log(answer.summary);
+
+  console.log("\n=== SECTIONS ===");
+  for (const section of answer.sections) {
+    console.log(`\n## ${section.heading} [${section.subQuestionId}]`);
+    console.log(section.content);
+    if (section.citedSources.length) {
+      console.log("Sources:");
+      for (const source of section.citedSources) {
+        console.log(`  - ${source.title} (${source.url ?? "no url"})`);
+      }
+    }
+  }
+
+  if (answer.unresolvedQuestions.length) {
+    console.log("\n=== UNRESOLVED QUESTIONS ===");
+    for (const id of answer.unresolvedQuestions) {
+      console.log(`  - ${id}`);
+    }
+  } else {
+    console.log("\n=== UNRESOLVED QUESTIONS ===");
+    console.log("  (none)");
   }
 }
 
@@ -24,19 +44,17 @@ async function main() {
       docs: fakeResearcher,
       code: fakeResearcher,
     },
-    criticAgent
+    criticAgent,
+    synthesizerAgent
   );
 
   for (const query of TEST_QUERIES) {
     console.log(`\n\n########## QUERY: ${query} ##########`);
 
-    const findings = await orchestrator.run(query);
+    const answer = await orchestrator.run(query);
 
-    console.log("\n=== FINDINGS ===");
-    for (const finding of findings) {
-      console.log();
-      printFinding(finding);
-    }
+    console.log();
+    printAnswer(answer);
   }
 }
 

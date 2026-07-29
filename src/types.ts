@@ -41,9 +41,26 @@ export interface CriticVerdict {
 
 export type CriticAgent = Agent<{ subQuestion: SubQuestion; finding: Finding }, CriticVerdict>;
 
+export interface AnswerSection {
+  subQuestionId: string;
+  heading: string;
+  content: string;
+  citedSources: Source[];
+}
+
+export interface SynthesizedAnswer {
+  originalQuery: string;
+  sections: AnswerSection[];
+  summary: string;
+  unresolvedQuestions: string[]; // sub-questions that never got verified, even after retry
+}
+
+export type SynthesizerAgent = Agent<{ plan: Plan; findings: Finding[] }, SynthesizedAnswer>;
+
 export interface Orchestrator {
   planner: PlannerAgent;
   researchers: Record<SubQuestion["sourceType"], ResearcherAgent>;
   critic: CriticAgent;
-  run(query: string): Promise<Finding[]>;
+  synthesizer: SynthesizerAgent;
+  run(query: string): Promise<SynthesizedAnswer>;
 }

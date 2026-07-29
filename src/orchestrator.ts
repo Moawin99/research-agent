@@ -1,4 +1,13 @@
-import { CriticAgent, Finding, Orchestrator, PlannerAgent, ResearcherAgent, SubQuestion } from "./types";
+import {
+  CriticAgent,
+  Finding,
+  Orchestrator,
+  PlannerAgent,
+  ResearcherAgent,
+  SubQuestion,
+  SynthesizedAnswer,
+  SynthesizerAgent,
+} from "./types";
 
 const MAX_RETRIES = 1;
 
@@ -6,18 +15,21 @@ export class SimpleOrchestrator implements Orchestrator {
   planner: PlannerAgent;
   researchers: Record<SubQuestion["sourceType"], ResearcherAgent>;
   critic: CriticAgent;
+  synthesizer: SynthesizerAgent;
 
   constructor(
     planner: PlannerAgent,
     researchers: Record<SubQuestion["sourceType"], ResearcherAgent>,
-    critic: CriticAgent
+    critic: CriticAgent,
+    synthesizer: SynthesizerAgent
   ) {
     this.planner = planner;
     this.researchers = researchers;
     this.critic = critic;
+    this.synthesizer = synthesizer;
   }
 
-  async run(query: string): Promise<Finding[]> {
+  async run(query: string): Promise<SynthesizedAnswer> {
     const plan = await this.planner.run(query);
 
     console.log("=== PLAN ===");
@@ -34,7 +46,8 @@ export class SimpleOrchestrator implements Orchestrator {
       findings.push(finding);
     }
 
-    return findings;
+    console.log("\n=== SYNTHESIZING ===");
+    return this.synthesizer.run({ plan, findings });
   }
 
   private async researchSubQuestion(subQuestion: SubQuestion): Promise<Finding> {

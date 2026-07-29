@@ -13,7 +13,9 @@ const SYSTEM_PROMPT = `You are a critical reviewer for a research pipeline. You 
 Return ONLY raw JSON matching this exact shape, no markdown fences, no preamble:
 {"subQuestionId": string, "passed": boolean, "feedback": string | null}
 
-If passed is false, "feedback" must be a specific, actionable note describing what's missing or wrong so a researcher can fix it on a retry. If passed is true, "feedback" must be null.`;
+If passed is false, "feedback" must be a specific, actionable note describing what's missing or wrong so a researcher can fix it on a retry. Keep it tight: 2-3 sentences, under 100 words. If passed is true, "feedback" must be null.
+
+The JSON must be complete and syntactically valid — do not let "feedback" run so long that the JSON gets cut off.`;
 
 function formatUserMessage(subQuestion: SubQuestion, finding: Finding): string {
   const sourceList = finding.sources.length
@@ -37,7 +39,7 @@ export const criticAgent: CriticAgent = {
   async run({ subQuestion, finding }): Promise<CriticVerdict> {
     const response = await client.messages.create({
       model: "claude-opus-5",
-      max_tokens: 1024,
+      max_tokens: 2048,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: formatUserMessage(subQuestion, finding) }],
     });

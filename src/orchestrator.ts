@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import {
   CriticAgent,
   Finding,
@@ -8,10 +9,11 @@ import {
   SynthesizedAnswer,
   SynthesizerAgent,
 } from "./types";
+import { OrchestratorEvents } from "./events";
 
 const MAX_RETRIES = 1;
 
-export class SimpleOrchestrator implements Orchestrator {
+export class SimpleOrchestrator extends EventEmitter<OrchestratorEvents> implements Orchestrator {
   planner: PlannerAgent;
   researchers: Record<SubQuestion["sourceType"], ResearcherAgent>;
   critic: CriticAgent;
@@ -23,6 +25,7 @@ export class SimpleOrchestrator implements Orchestrator {
     critic: CriticAgent,
     synthesizer: SynthesizerAgent
   ) {
+    super();
     this.planner = planner;
     this.researchers = researchers;
     this.critic = critic;
@@ -30,24 +33,23 @@ export class SimpleOrchestrator implements Orchestrator {
   }
 
   async run(query: string): Promise<SynthesizedAnswer> {
+    this.emit("plan:start", query);
     const plan = await this.planner.run(query);
+    this.emit("plan:complete", plan);
 
-    console.log("=== PLAN ===");
-    console.log(`Original query: ${plan.originalQuery}`);
-    for (const subQuestion of plan.subQuestions) {
-      console.log(`  [${subQuestion.id}] (${subQuestion.sourceType}) ${subQuestion.text}`);
-    }
-
-    console.log("\n=== RESEARCHING ===");
     const findings: Finding[] = [];
     for (const subQuestion of plan.subQuestions) {
-      console.log(`\n--- [${subQuestion.id}] (${subQuestion.sourceType}) ---`);
+      this.emit("research:start", subQuestion);
       const finding = await this.researchSubQuestion(subQuestion);
       findings.push(finding);
+      this.emit("research:complete", finding);
     }
 
-    console.log("\n=== SYNTHESIZING ===");
-    return this.synthesizer.run({ plan, findings });
+    this.emit("synthesize:start");
+    const answer = await this.synthesizer.run({ plan, findings });
+    this.emit("synthesize:complete", answer);
+
+    return answer;
   }
 
   private async researchSubQuestion(subQuestion: SubQuestion): Promise<Finding> {
@@ -55,7 +57,7 @@ export class SimpleOrchestrator implements Orchestrator {
 
     let finding = await researcher.run(subQuestion);
     let verdict = await this.critic.run({ subQuestion, finding });
-    this.logVerdict(subQuestion.id, 1, verdict);
+    this.emit("research:attempt", { subQuestionId: subQuestion.id, attempt: 1, verdict });
 
     let retries = 0;
     while (!verdict.passed && retries < MAX_RETRIES) {
@@ -63,15 +65,10 @@ export class SimpleOrchestrator implements Orchestrator {
       const retryInput: SubQuestion = { ...subQuestion, feedback: verdict.feedback };
       finding = await researcher.run(retryInput);
       verdict = await this.critic.run({ subQuestion, finding });
-      this.logVerdict(subQuestion.id, retries + 1, verdict);
+      this.emit("research:attempt", { subQuestionId: subQuestion.id, attempt: retries + 1, verdict });
     }
 
     finding.verified = verdict.passed;
     return finding;
-  }
-
-  private logVerdict(subQuestionId: string, attempt: number, verdict: { passed: boolean; feedback?: string }): void {
-    const feedbackSuffix = verdict.feedback ? ` feedback="${verdict.feedback}"` : "";
-    console.log(`  [critic] [${subQuestionId}] attempt ${attempt}: passed=${verdict.passed}${feedbackSuffix}`);
   }
 }

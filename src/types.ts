@@ -1,3 +1,5 @@
+import { PipelineEventEmitter } from "./eventEmitter";
+
 export interface SubQuestion {
   id: string;
   text: string;
@@ -62,5 +64,6 @@ export interface Orchestrator {
   researchers: Record<SubQuestion["sourceType"], ResearcherAgent>;
   critic: CriticAgent;
   synthesizer: SynthesizerAgent;
+  events: PipelineEventEmitter;
   run(query: string): Promise<SynthesizedAnswer>;
 }

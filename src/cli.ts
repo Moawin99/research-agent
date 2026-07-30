@@ -9,8 +9,8 @@ import { criticAgent } from "./agents/criticAgent";
 import { synthesizerAgent } from "./agents/synthesizerAgent";
 import { SimpleOrchestrator } from "./orchestrator";
 import { printAnswer } from "./display";
-import { Plan, SubQuestion } from "./types";
-import { ResearchAttempt } from "./events";
+import { EventListener, PipelineEvent } from "./events";
+import { fileLogger } from "./listeners/fileLogger";
 
 let activeSpinner: Ora | undefined;
 
@@ -55,58 +55,90 @@ function createOrchestrator(): SimpleOrchestrator {
   );
 }
 
-function wireDisplay(orchestrator: SimpleOrchestrator): void {
+// Pure display logic driven entirely by the event stream — this listener has
+// no idea how the pipeline runs internally, only what events it emits.
+function createDisplayListener(): EventListener {
   const researchSpinners = new Map<string, Ora>();
 
-  orchestrator.on("plan:start", () => {
-    activeSpinner = ora(chalk.cyan("Planning research...")).start();
-  });
+  return (event: PipelineEvent) => {
+    switch (event.type) {
+      case "plan_started":
+        activeSpinner = ora(chalk.cyan("Planning research...")).start();
+        break;
 
-  orchestrator.on("plan:complete", (plan: Plan) => {
-    activeSpinner?.succeed(chalk.cyan(`Plan ready — ${plan.subQuestions.length} sub-question(s)`));
-    activeSpinner = undefined;
-    for (const subQuestion of plan.subQuestions) {
-      console.log(chalk.gray(`   [${subQuestion.id}] (${subQuestion.sourceType}) ${subQuestion.text}`));
+      case "plan_completed":
+        activeSpinner?.succeed(chalk.cyan(`Plan ready — ${event.plan.subQuestions.length} sub-question(s)`));
+        activeSpinner = undefined;
+        for (const subQuestion of event.plan.subQuestions) {
+          console.log(chalk.gray(`   [${subQuestion.id}] (${subQuestion.sourceType}) ${subQuestion.text}`));
+        }
+        break;
+
+      case "research_started": {
+        const spinner = ora(
+          chalk.cyan(`Researching [${event.subQuestion.id}]: ${event.subQuestion.text}`)
+        ).start();
+        researchSpinners.set(event.subQuestion.id, spinner);
+        activeSpinner = spinner;
+        break;
+      }
+
+      case "critic_verdict": {
+        const subQuestionId = event.verdict.subQuestionId;
+        const spinner = researchSpinners.get(subQuestionId);
+        if (!spinner) break;
+
+        if (event.verdict.passed && event.attempt === 1) {
+          spinner.succeed(chalk.green(`[${subQuestionId}] verified — passed on first attempt`));
+          researchSpinners.delete(subQuestionId);
+        } else if (event.verdict.passed) {
+          spinner.succeed(chalk.yellow(`[${subQuestionId}] verified — passed after retry`));
+          researchSpinners.delete(subQuestionId);
+        } else if (event.attempt === 2) {
+          spinner.fail(chalk.red(`[${subQuestionId}] unresolved — still failing after retry`));
+          researchSpinners.delete(subQuestionId);
+        }
+        // attempt 1 && !passed: leave the spinner running — "retry_started" updates its text next.
+        break;
+      }
+
+      case "retry_started": {
+        const spinner = researchSpinners.get(event.subQuestionId);
+        if (spinner) {
+          spinner.text = chalk.yellow(`[${event.subQuestionId}] failed review — retrying with feedback...`);
+        }
+        break;
+      }
+
+      case "research_failed": {
+        const spinner = researchSpinners.get(event.subQuestionId);
+        spinner?.fail(chalk.red(`[${event.subQuestionId}] research failed: ${event.error}`));
+        researchSpinners.delete(event.subQuestionId);
+        break;
+      }
+
+      case "synthesis_started":
+        activeSpinner = ora(chalk.cyan("Synthesizing final answer...")).start();
+        break;
+
+      case "synthesis_completed":
+        activeSpinner?.succeed(chalk.cyan("Final answer ready"));
+        activeSpinner = undefined;
+        break;
+
+      case "research_completed":
+      case "pipeline_error":
+        // No direct display action: spinners are already resolved via critic_verdict /
+        // research_failed, and the top-level catch in main() handles user-facing error text.
+        break;
     }
-  });
-
-  orchestrator.on("research:start", (subQuestion: SubQuestion) => {
-    const spinner = ora(chalk.cyan(`Researching [${subQuestion.id}]: ${subQuestion.text}`)).start();
-    researchSpinners.set(subQuestion.id, spinner);
-    activeSpinner = spinner;
-  });
-
-  orchestrator.on("research:attempt", ({ subQuestionId, attempt, verdict }: ResearchAttempt) => {
-    const spinner = researchSpinners.get(subQuestionId);
-    if (!spinner) return;
-
-    if (verdict.passed && attempt === 1) {
-      spinner.succeed(chalk.green(`[${subQuestionId}] verified — passed on first attempt`));
-      researchSpinners.delete(subQuestionId);
-    } else if (verdict.passed) {
-      spinner.succeed(chalk.yellow(`[${subQuestionId}] verified — passed after retry`));
-      researchSpinners.delete(subQuestionId);
-    } else if (attempt === 1) {
-      spinner.text = chalk.yellow(`[${subQuestionId}] failed review — retrying with feedback...`);
-    } else {
-      spinner.fail(chalk.red(`[${subQuestionId}] unresolved — still failing after retry`));
-      researchSpinners.delete(subQuestionId);
-    }
-  });
-
-  orchestrator.on("synthesize:start", () => {
-    activeSpinner = ora(chalk.cyan("Synthesizing final answer...")).start();
-  });
-
-  orchestrator.on("synthesize:complete", () => {
-    activeSpinner?.succeed(chalk.cyan("Final answer ready"));
-    activeSpinner = undefined;
-  });
+  };
 }
 
 async function runOnce(query: string): Promise<void> {
   const orchestrator = createOrchestrator();
-  wireDisplay(orchestrator);
+  orchestrator.events.subscribe(createDisplayListener());
+  orchestrator.events.subscribe(fileLogger); // comment out to prove the CLI display is unaffected
 
   const answer = await orchestrator.run(query);
   printAnswer(answer);
@@ -127,7 +159,6 @@ async function main(): Promise<void> {
     process.exit(0);
   });
 
-  // infinite loop
   for (;;) {
     const query = await promptForQuery();
     if (query === undefined) break;

@@ -1,0 +1,33 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model ResearchRun {
+  id           String              @id @default(cuid())
+  query        String
+  summary      String
+  createdAt    DateTime            @default(now())
+  answer       String // full synthesized answer content, stored as JSON string
+  subQuestions SubQuestionRecord[]
+}
+
+model SubQuestionRecord {
+  id             String      @id @default(cuid())
+  runId          String
+  run            ResearchRun @relation(fields: [runId], references: [id])
+  text           String
+  sourceType     String
+  findingContent String?
+  confidence     String?
+  verified       Boolean     @default(false)
+  attempts       Int         @default(1)
+  sources        String // JSON string array of Source objects
+}

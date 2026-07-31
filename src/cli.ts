@@ -11,6 +11,9 @@ import { SimpleOrchestrator } from "./orchestrator";
 import { printAnswer } from "./display";
 import { EventListener, PipelineEvent } from "./events";
 import { fileLogger } from "./listeners/fileLogger";
+import { createDbLogger } from "./listeners/dbLogger";
+import { prisma } from "./db/client";
+import { listHistory, showHistoryDetail } from "./history";
 
 let activeSpinner: Ora | undefined;
 
@@ -139,6 +142,7 @@ async function runOnce(query: string): Promise<void> {
   const orchestrator = createOrchestrator();
   orchestrator.events.subscribe(createDisplayListener());
   orchestrator.events.subscribe(fileLogger); // comment out to prove the CLI display is unaffected
+  orchestrator.events.subscribe(createDbLogger());
 
   const answer = await orchestrator.run(query);
   printAnswer(answer);
@@ -153,6 +157,18 @@ function printError(error: unknown): void {
 }
 
 async function main(): Promise<void> {
+  const [, , command, arg] = process.argv;
+
+  if (command === "history") {
+    if (arg) {
+      await showHistoryDetail(arg);
+    } else {
+      await listHistory();
+    }
+    await prisma.$disconnect();
+    return;
+  }
+
   process.on("SIGINT", () => {
     activeSpinner?.stop();
     console.log("\n" + chalk.gray("Cancelled."));
@@ -177,6 +193,7 @@ async function main(): Promise<void> {
   }
 
   console.log(chalk.gray("Goodbye."));
+  await prisma.$disconnect();
 }
 
 main();

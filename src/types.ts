@@ -27,9 +27,18 @@ export interface Finding {
   verified: boolean;
 }
 
+export interface ApiUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens?: number;
+  cacheCreationTokens?: number;
+}
+
+export type ApiUsageReporter = (agent: string, usage: ApiUsage) => void;
+
 export interface Agent<TInput, TOutput> {
   name: string;
-  run(input: TInput): Promise<TOutput>;
+  run(input: TInput, reportUsage?: ApiUsageReporter): Promise<TOutput>;
 }
 
 export type PlannerAgent = Agent<string, Plan>;

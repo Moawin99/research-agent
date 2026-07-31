@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { Finding, ResearcherAgent, Source, SubQuestion } from "../types";
+import { ApiUsageReporter, Finding, ResearcherAgent, Source, SubQuestion } from "../types";
 import { FindingSchema } from "../schemas";
+import { toApiUsage } from "../utils";
 
 const client = new Anthropic();
 
@@ -51,14 +52,16 @@ Research again and specifically address this feedback in your revised answer.`;
 
 export const webResearcher: ResearcherAgent = {
   name: "webResearcher",
-  async run(subQuestion: SubQuestion): Promise<Finding> {
+  async run(subQuestion: SubQuestion, reportUsage?: ApiUsageReporter): Promise<Finding> {
     const response = await createWithRetry({
       model: "claude-opus-5",
       max_tokens: 4096,
-      system: SYSTEM_PROMPT,
+      system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
       tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 5 }],
       messages: [{ role: "user", content: buildUserMessage(subQuestion) }],
     });
+
+    reportUsage?.("webResearcher", toApiUsage(response.usage));
 
     if (response.stop_reason === "pause_turn") {
       console.warn(

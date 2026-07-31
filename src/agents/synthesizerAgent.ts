@@ -1,7 +1,15 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { AnswerSection, Finding, Plan, SubQuestion, SynthesizedAnswer, SynthesizerAgent } from "../types";
+import {
+  AnswerSection,
+  ApiUsageReporter,
+  Finding,
+  Plan,
+  SubQuestion,
+  SynthesizedAnswer,
+  SynthesizerAgent,
+} from "../types";
 import { SynthesizedAnswerSchema } from "../schemas";
-import { stripCodeFences } from "../utils";
+import { stripCodeFences, toApiUsage } from "../utils";
 import { AnswerBuilder } from "./answerBuilder";
 
 const client = new Anthropic();
@@ -35,13 +43,19 @@ Available sources (cite by title):
 ${sourceList}`;
 }
 
-async function buildSection(subQuestion: SubQuestion, finding: Finding): Promise<AnswerSection> {
+async function buildSection(
+  subQuestion: SubQuestion,
+  finding: Finding,
+  reportUsage?: ApiUsageReporter
+): Promise<AnswerSection> {
   const response = await client.messages.create({
     model: "claude-opus-5",
-    max_tokens: 2048,
-    system: SECTION_SYSTEM_PROMPT,
+    max_tokens: 1536,
+    system: [{ type: "text", text: SECTION_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
     messages: [{ role: "user", content: formatSectionUserMessage(subQuestion, finding) }],
   });
+
+  reportUsage?.("synthesizerAgent:section", toApiUsage(response.usage));
 
   const textBlock = response.content.find((block) => block.type === "text");
   const rawText = textBlock && textBlock.type === "text" ? textBlock.text : "";
@@ -69,7 +83,11 @@ async function buildSection(subQuestion: SubQuestion, finding: Finding): Promise
   };
 }
 
-async function buildSummary(originalQuery: string, sections: AnswerSection[]): Promise<string> {
+async function buildSummary(
+  originalQuery: string,
+  sections: AnswerSection[],
+  reportUsage?: ApiUsageReporter
+): Promise<string> {
   const sectionList = sections.length
     ? sections.map((s) => `## ${s.heading}\n${s.content}`).join("\n\n")
     : "(no sections were produced — no findings passed verification)";
@@ -77,9 +95,11 @@ async function buildSummary(originalQuery: string, sections: AnswerSection[]): P
   const response = await client.messages.create({
     model: "claude-opus-5",
     max_tokens: 512,
-    system: SUMMARY_SYSTEM_PROMPT,
+    system: [{ type: "text", text: SUMMARY_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
     messages: [{ role: "user", content: `Original query: ${originalQuery}\n\nReport sections:\n${sectionList}` }],
   });
+
+  reportUsage?.("synthesizerAgent:summary", toApiUsage(response.usage));
 
   const textBlock = response.content.find((block) => block.type === "text");
   const rawText = textBlock && textBlock.type === "text" ? textBlock.text : "";
@@ -88,7 +108,10 @@ async function buildSummary(originalQuery: string, sections: AnswerSection[]): P
 
 export const synthesizerAgent: SynthesizerAgent = {
   name: "synthesizerAgent",
-  async run({ plan, findings }: { plan: Plan; findings: Finding[] }): Promise<SynthesizedAnswer> {
+  async run(
+    { plan, findings }: { plan: Plan; findings: Finding[] },
+    reportUsage?: ApiUsageReporter
+  ): Promise<SynthesizedAnswer> {
     const findingsById = new Map(findings.map((f) => [f.subQuestionId, f]));
     const builder = new AnswerBuilder();
     const sections: AnswerSection[] = [];
@@ -101,12 +124,12 @@ export const synthesizerAgent: SynthesizerAgent = {
         continue;
       }
 
-      const section = await buildSection(subQuestion, finding);
+      const section = await buildSection(subQuestion, finding, reportUsage);
       builder.addSection(section);
       sections.push(section);
     }
 
-    const summary = await buildSummary(plan.originalQuery, sections);
+    const summary = await buildSummary(plan.originalQuery, sections, reportUsage);
     const candidate = builder.build(plan.originalQuery, summary);
 
     try {

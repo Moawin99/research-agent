@@ -10,6 +10,14 @@ export type PipelineEvent =
   | { type: "retry_started"; subQuestionId: string; feedback: string }
   | { type: "synthesis_started" }
   | { type: "synthesis_completed"; answer: SynthesizedAnswer }
-  | { type: "pipeline_error"; stage: string; error: string };
+  | { type: "pipeline_error"; stage: string; error: string }
+  | {
+      type: "api_call_completed";
+      agent: string;
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadTokens?: number;
+      cacheCreationTokens?: number;
+    };
 
 export type EventListener = (event: PipelineEvent) => void;

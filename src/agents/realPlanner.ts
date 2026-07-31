@@ -1,11 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { Plan, PlannerAgent } from "../types";
+import { ApiUsageReporter, Plan, PlannerAgent } from "../types";
 import { PlanSchema } from "../schemas";
-import { stripCodeFences } from "../utils";
+import { stripCodeFences, toApiUsage } from "../utils";
 
 const client = new Anthropic();
 
-const SYSTEM_PROMPT = `You are a research planning agent. Given a user's query, break it into 2-5 focused sub-questions that together cover what's needed to answer the query well.
+const SYSTEM_PROMPT = `You are a research planning agent. Given a user's query, break it into the minimum number of focused sub-questions (1-5) that together fully cover what's needed to answer the query well. Use 1-2 for narrow or single-fact queries; reserve 3-5 for genuinely broad or multi-part queries. Do not pad the plan with extra sub-questions just to reach a higher count.
 
 For each sub-question, assign a sourceType of "web", "docs", or "code" depending on what kind of source would best answer it. Default to "web" if unsure.
 
@@ -14,13 +14,15 @@ Return ONLY raw JSON matching this exact shape, with no markdown code fences and
 
 export const realPlanner: PlannerAgent = {
   name: "realPlanner",
-  async run(query: string): Promise<Plan> {
+  async run(query: string, reportUsage?: ApiUsageReporter): Promise<Plan> {
     const response = await client.messages.create({
       model: "claude-opus-5",
       max_tokens: 1024,
-      system: SYSTEM_PROMPT,
+      system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: query }],
     });
+
+    reportUsage?.("realPlanner", toApiUsage(response.usage));
 
     const textBlock = response.content.find((block) => block.type === "text");
     const rawText = textBlock && textBlock.type === "text" ? textBlock.text : "";

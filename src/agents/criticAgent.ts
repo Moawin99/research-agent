@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { CriticAgent, CriticVerdict, Finding, SubQuestion } from "../types";
+import { ApiUsageReporter, CriticAgent, CriticVerdict, Finding, SubQuestion } from "../types";
 import { CriticVerdictSchema } from "../schemas";
-import { stripCodeFences } from "../utils";
+import { stripCodeFences, toApiUsage } from "../utils";
 
 const client = new Anthropic();
 
@@ -17,9 +17,20 @@ If passed is false, "feedback" must be a specific, actionable note describing wh
 
 The JSON must be complete and syntactically valid — do not let "feedback" run so long that the JSON gets cut off.`;
 
+// Critic only needs enough of each snippet to judge relevance, not the full text —
+// truncated here for the Critic's prompt only; the full Finding (with untruncated
+// snippets) is preserved for the Synthesizer and final display.
+const CRITIC_SNIPPET_CHAR_BUDGET = 200;
+
+function truncateSnippet(snippet: string): string {
+  return snippet.length > CRITIC_SNIPPET_CHAR_BUDGET
+    ? snippet.slice(0, CRITIC_SNIPPET_CHAR_BUDGET) + "…"
+    : snippet;
+}
+
 function formatUserMessage(subQuestion: SubQuestion, finding: Finding): string {
   const sourceList = finding.sources.length
-    ? finding.sources.map((s) => `- ${s.title} (${s.url ?? "no url"}): ${s.snippet}`).join("\n")
+    ? finding.sources.map((s) => `- ${s.title} (${s.url ?? "no url"}): ${truncateSnippet(s.snippet)}`).join("\n")
     : "(no sources provided)";
 
   return `Sub-question ID: ${subQuestion.id}
@@ -36,13 +47,15 @@ Finding self-reported confidence: ${finding.confidence}`;
 
 export const criticAgent: CriticAgent = {
   name: "criticAgent",
-  async run({ subQuestion, finding }): Promise<CriticVerdict> {
+  async run({ subQuestion, finding }, reportUsage?: ApiUsageReporter): Promise<CriticVerdict> {
     const response = await client.messages.create({
       model: "claude-opus-5",
-      max_tokens: 2048,
-      system: SYSTEM_PROMPT,
+      max_tokens: 1536,
+      system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: formatUserMessage(subQuestion, finding) }],
     });
+
+    reportUsage?.("criticAgent", toApiUsage(response.usage));
 
     const textBlock = response.content.find((block) => block.type === "text");
     const rawText = textBlock && textBlock.type === "text" ? textBlock.text : "";

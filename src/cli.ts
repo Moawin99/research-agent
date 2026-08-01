@@ -12,6 +12,8 @@ import { printAnswer } from "./display";
 import { EventListener, PipelineEvent } from "./events";
 import { fileLogger } from "./listeners/fileLogger";
 import { createDbLogger } from "./listeners/dbLogger";
+import { createGrafanaBridge } from "./listeners/grafanaBridge";
+import { startLocalServer } from "./server/localServer";
 import { prisma } from "./db/client";
 import { listHistory, showHistoryDetail } from "./history";
 
@@ -207,15 +209,25 @@ function createTokenSummaryListener(): EventListener {
   };
 }
 
-async function runOnce(query: string): Promise<void> {
-  const orchestrator = createOrchestrator();
-  orchestrator.events.subscribe(createDisplayListener());
-  orchestrator.events.subscribe(fileLogger); // comment out to prove the CLI display is unaffected
-  orchestrator.events.subscribe(createDbLogger());
-  orchestrator.events.subscribe(createTokenSummaryListener());
+// The orchestrator is now a long-lived, per-process singleton (see main()) so the
+// SSE endpoint and the Grafana bridge can hold a single stable subscription across
+// every query in the session. Per-run listeners (display/file/db/token-summary) still
+// need fresh state each run, so they subscribe and unsubscribe around each call here.
+async function runOnce(query: string, orchestrator: SimpleOrchestrator): Promise<void> {
+  const unsubscribeDisplay = orchestrator.events.subscribe(createDisplayListener());
+  const unsubscribeFileLogger = orchestrator.events.subscribe(fileLogger); // comment out to prove the CLI display is unaffected
+  const unsubscribeDbLogger = orchestrator.events.subscribe(createDbLogger());
+  const unsubscribeTokenSummary = orchestrator.events.subscribe(createTokenSummaryListener());
 
-  const answer = await orchestrator.run(query);
-  printAnswer(answer);
+  try {
+    const answer = await orchestrator.run(query);
+    printAnswer(answer);
+  } finally {
+    unsubscribeDisplay();
+    unsubscribeFileLogger();
+    unsubscribeDbLogger();
+    unsubscribeTokenSummary();
+  }
 }
 
 function printError(error: unknown): void {
@@ -245,13 +257,17 @@ async function main(): Promise<void> {
     process.exit(0);
   });
 
+  const orchestrator = createOrchestrator();
+  orchestrator.events.subscribe(createGrafanaBridge());
+  startLocalServer(orchestrator);
+
   for (;;) {
     const query = await promptForQuery();
     if (query === undefined) break;
 
     console.log();
     try {
-      await runOnce(query);
+      await runOnce(query, orchestrator);
     } catch (error) {
       printError(error);
     }
@@ -264,6 +280,9 @@ async function main(): Promise<void> {
 
   console.log(chalk.gray("Goodbye."));
   await prisma.$disconnect();
+  // The local Express server (started above) keeps a listening socket open, which
+  // would otherwise keep the process alive indefinitely after the prompt loop ends.
+  process.exit(0);
 }
 
 main();

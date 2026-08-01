@@ -17,6 +17,34 @@ npm start
 - `npm start -- history` — list the last 10 past research runs
 - `npm start -- history <id>` — show one past run's full result
 
+## Local observability (SSE + Grafana/Loki/Prometheus)
+
+`npm start` also boots a small local Express server (port `3001`, same process as the
+CLI) exposing the pipeline's Observer event stream live:
+
+- `GET http://localhost:3001/events/stream` — raw pipeline events as Server-Sent
+  Events (`curl -N http://localhost:3001/events/stream` to tail them)
+- `GET http://localhost:3001/metrics` — Prometheus scrape target
+
+To see this as real dashboards instead of raw JSON:
+
+```
+docker compose up -d   # starts Loki, Prometheus, and Grafana with datasources
+                        # auto-provisioned from observability/ — no manual setup
+npm start               # starts the CLI + the local SSE/metrics server
+```
+
+Run a query in the CLI, then open `http://localhost:3000` (anonymous access is
+enabled for local use) and import `observability/dashboard.json`
+(**Dashboards → New → Import**) to get panels for runs over time, token usage by
+agent, retry rate, verified vs. unresolved findings, run duration distribution, and a
+live event log filterable by event type. The dashboard's Prometheus/Loki references
+are template variables (`${DS_PROMETHEUS}` / `${DS_LOKI}`), so the import wizard will
+prompt you to pick the provisioned datasources — this is the same portable format
+Grafana produces via **Share → Export → Export for sharing externally**.
+
+This is a local-only setup — no deployment, auth, or public URL involved anywhere.
+
 ## Cost tradeoffs
 
 Each run prints a per-agent token usage summary (input/output/cache tokens) so the

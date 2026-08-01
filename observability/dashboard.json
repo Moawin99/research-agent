@@ -1,0 +1,175 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "description": "",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    },
+    {
+      "name": "DS_LOKI",
+      "label": "Loki",
+      "description": "",
+      "type": "datasource",
+      "pluginId": "loki",
+      "pluginName": "Loki"
+    }
+  ],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "12.0.0" },
+    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" },
+    { "type": "datasource", "id": "loki", "name": "Loki", "version": "1.0.0" },
+    { "type": "panel", "id": "timeseries", "name": "Time series", "version": "" },
+    { "type": "panel", "id": "stat", "name": "Stat", "version": "" },
+    { "type": "panel", "id": "piechart", "name": "Pie chart", "version": "" },
+    { "type": "panel", "id": "logs", "name": "Logs", "version": "" }
+  ],
+  "dashboard": {
+    "id": null,
+    "uid": "research-pipeline",
+    "title": "Research Pipeline",
+    "tags": ["research-agent"],
+    "timezone": "browser",
+    "schemaVersion": 39,
+    "version": 1,
+    "refresh": "10s",
+    "time": { "from": "now-6h", "to": "now" },
+    "templating": {
+      "list": [
+        {
+          "name": "DS_PROMETHEUS",
+          "type": "datasource",
+          "query": "prometheus",
+          "label": "Prometheus",
+          "hide": 0,
+          "current": {}
+        },
+        {
+          "name": "DS_LOKI",
+          "type": "datasource",
+          "query": "loki",
+          "label": "Loki",
+          "hide": 0,
+          "current": {}
+        },
+        {
+          "name": "event_type",
+          "type": "query",
+          "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+          "query": "label_values({job=\"research-pipeline\"}, event_type)",
+          "refresh": 2,
+          "multi": true,
+          "includeAll": true,
+          "current": { "text": "All", "value": "$__all" }
+        }
+      ]
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Runs Over Time",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "pipeline_runs_total",
+            "legendFormat": "runs",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Token Usage by Agent",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "fieldConfig": { "defaults": { "custom": { "stacking": { "mode": "normal" } } }, "overrides": [] },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "sum by (agent) (tokens_used_total)",
+            "legendFormat": "{{agent}}",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Retry Rate",
+        "type": "stat",
+        "gridPos": { "h": 8, "w": 6, "x": 0, "y": 8 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "research_retries_total / pipeline_runs_total",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Verified vs Unresolved Findings",
+        "type": "piechart",
+        "gridPos": { "h": 8, "w": 6, "x": 6, "y": 8 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "findings_verified_total",
+            "legendFormat": "verified",
+            "refId": "A"
+          },
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "findings_unresolved_total",
+            "legendFormat": "unresolved",
+            "refId": "B"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Run Duration Distribution (p50/p90)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "histogram_quantile(0.5, sum by (le) (pipeline_run_duration_seconds_bucket))",
+            "legendFormat": "p50",
+            "refId": "A"
+          },
+          {
+            "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+            "expr": "histogram_quantile(0.9, sum by (le) (pipeline_run_duration_seconds_bucket))",
+            "legendFormat": "p90",
+            "refId": "B"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Live Event Log",
+        "type": "logs",
+        "gridPos": { "h": 10, "w": 24, "x": 0, "y": 16 },
+        "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+        "targets": [
+          {
+            "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+            "expr": "{job=\"research-pipeline\", event_type=~\"$event_type\"}",
+            "refId": "A"
+          }
+        ]
+      }
+    ]
+  }
+}
